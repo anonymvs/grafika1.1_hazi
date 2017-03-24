@@ -96,7 +96,7 @@ void checkLinking(unsigned int program) {
 // vertex shader in GLSL
 const char * vertexSource = R"(
 	#version 330
-    precision highp float;
+	precision highp float;
 
 	uniform mat4 MVP;			// Model-View-Projection matrix in row-major format
 
@@ -113,7 +113,7 @@ const char * vertexSource = R"(
 // fragment shader in GLSL
 const char * fragmentSource = R"(
 	#version 330
-    precision highp float;
+	precision highp float;
 
 	in vec3 color;				// variable input: interpolated color of vertex shader
 	out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation
@@ -342,7 +342,7 @@ public:
 
 class LineStrip {
 	GLuint vao, vbo;        // vertex array object, vertex buffer object
-	float  vertexData[100]; // interleaved data of coordinates and colors
+	float  vertexData[1000]; // interleaved data of coordinates and colors
 	int    nVertices;       // number of vertices
 public:
 	LineStrip() {
@@ -352,7 +352,7 @@ public:
 		glGenVertexArrays(1, &vao);
 		glBindVertexArray(vao);
 
-		GLuint vbo;	// vertex/index buffer object
+		//GLuint vbo;	// vertex/index buffer object
 		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		// Enable the vertex attribute arrays
@@ -365,18 +365,23 @@ public:
 	}
 
 	void AddPoint(float cX, float cY) {
-		if (nVertices >= 20) return;
+		if (nVertices >= 200) return;
 
-		vec4 wVertex = vec4(cX, cY, 0, 1) * camera.Pinv() * camera.Vinv();
+		//vec4 wVertex = vec4(cX, cY, 0, 1) * camera.Pinv() * camera.Vinv();
 		// fill interleaved data
-		vertexData[5 * nVertices] = wVertex.v[0];
-		vertexData[5 * nVertices + 1] = wVertex.v[1];
+		vertexData[5 * nVertices] = cX;
+		vertexData[5 * nVertices + 1] = cY;
 		vertexData[5 * nVertices + 2] = 1; // red
 		vertexData[5 * nVertices + 3] = 1; // green
 		vertexData[5 * nVertices + 4] = 0; // blue
 		nVertices++;
 		// copy data to the GPU
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		glBufferData(GL_ARRAY_BUFFER, nVertices * 5 * sizeof(float), vertexData, GL_DYNAMIC_DRAW);
+	}
+
+	void removeAll() {
+		nVertices = 0;
 	}
 
 	void Draw() {
@@ -393,42 +398,142 @@ public:
 	}
 };
 
+class ControlPoint {
+	vec3 pos;
+	float t;
+public:
+	ControlPoint() {}
+
+	ControlPoint(float argt, float x, float y, float z) {
+		pos = vec3(x, y, z);
+		t = argt;
+	}
+
+	vec3 getPos() {
+		return pos;
+	}
+
+	float getTimeValue() {
+		return t;
+	}
+
+	void setPos(vec3 argv) {
+		pos = argv;
+	}
+
+	void setTimeValue(float argt) {
+		t = argt;
+	}
+
+	ControlPoint& operator=(ControlPoint arg) {
+		this->pos = arg.getPos();
+		this->t = arg.getTimeValue();
+		return *this;
+	}
+};
+
 class LagrangeCurve {
-	vec3 controlPoints[100];
-	int cpCount;
-	float ts[100];
-	int tCount;
-	
+	std::vector<ControlPoint> cps;
+
 	float L(int i, float t) {
 		float Li = 1.0f;
-		for (int j = 0; j < cpCount; j++) {
+		for (int j = 0; j < cps.size(); j++) {
 			if (j != i)
-				Li *= (t - ts[j]) / (ts[i] - ts[j]);
+				Li *= (t - cps[j].getTimeValue()) / (cps[i].getTimeValue() - cps[j].getTimeValue());
 		}
 		return Li;
 	}
 
 public: 
-	void AddControlPoint(vec3 cp) {
-		float ti = cpCount;
-		controlPoints[cpCount + 1] = cp; 
-		ts[tCount] = ti;
-		cpCount++;
-		tCount++;
+
+	LagrangeCurve() {}
+
+	void AddControlPoint(float time, float cx, float cy,  LineStrip& l) {
+		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
+		float x = wVertex.v[0];
+		float y = wVertex.v[1];
+		float t = 0;
+
+		ControlPoint cp = ControlPoint(cps.size(), x, y, 0);
+		cps.push_back(cp);
+
+		l.removeAll();
+		float dt = 0.1f;
+		if (cps.size() <= 2) {
+			for (int i = 0; i < cps.size(); i++) {
+				l.AddPoint(cps[i].getPos().x, cps[i].getPos().y);
+			}
+		}
+		else {
+			for (float i = 0; i <= cps.size()-0.99f; i += dt) {
+				vec3 rr = r(i);
+				l.AddPoint(rr.x, rr.y);
+			}
+		}
 	}
 
 	vec3 r(float t) {
 		vec3 rr(0, 0, 0);
-		for (int i = 0; i < cpCount; i++) {
-			rr = rr + (controlPoints[i] * L(i, t));
-			return rr;
+		for (int i = 0; i < cps.size(); i++) {
+			rr = rr + (cps[i].getPos() * L(i, t));
 		}
+		return rr;
+	}
+};
+
+class BezierCurve {
+	std::vector<ControlPoint> cps;
+
+	float B(int i, float t) {
+		int n = cps.size() - 1; // n deg polynomial = n + 1 pts!
+		float choose = 1;
+		for (int j = 1; j <= i; j++) {
+			choose *= (float) (n - j + 1) / j;
+		}
+		return choose * pow(t, i) * pow(1 - t, n - i);
+	}
+
+public:
+	void AddControlPoint(float time, float cx, float cy, LineStrip& l) {
+		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
+		float x = wVertex.v[0];
+		float y = wVertex.v[1];
+		ControlPoint cp = ControlPoint(time, x, y, 0);
+		cps.push_back(cp);
+
+		l.removeAll();			
+		if (cps.size() <= 2) {
+			for (int i = 0; i < cps.size(); i++) {
+				l.AddPoint(cps[i].getPos().x, cps[i].getPos().y);
+			}
+		}
+		else {
+
+			float dt = 0.01f;
+			for (float i = 0.0f; i <= 1.01f; i+= dt) {
+				vec3 rr = r(i);
+				l.AddPoint(rr.x, rr.y);
+			}
+		}
+	}
+
+	vec3 r(float t) {
+		vec3 rr(0, 0, 0);
+		for (int i = 0; i < cps.size(); i++) {
+			rr = rr + (cps[i].getPos() * B(i, t));
+			printf("i2: %d\n", i);
+		}
+		return rr;
 	}
 };
 
 // The virtual world: collection of two objects
 Triangle triangle;
+Triangle triangle2;
 LineStrip lineStrip;
+LagrangeCurve lagrangeCurve;
+BezierCurve bezierCurve;
+LineStrip lineStripBezier;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
@@ -436,7 +541,10 @@ void onInitialization() {
 
 	// Create objects by setting up their vertex data on the GPU
 	triangle.Create();
+	triangle2.Create();
 	lineStrip.Create();
+	lineStripBezier.Create();
+
 
 	// Create vertex shader from string
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -488,7 +596,9 @@ void onDisplay() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
 	triangle.Draw();
+	triangle2.Draw();
 	lineStrip.Draw();
+	lineStripBezier.Draw();
 	glutSwapBuffers();									// exchange the two buffers
 }
 
@@ -504,10 +614,24 @@ void onKeyboardUp(unsigned char key, int pX, int pY) {
 
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
+	long time = glutGet(GLUT_ELAPSED_TIME);
+	float sec = time / 1000.0f;
+	float cX;
+	float cY;
+	//lagrange/linestrip
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
-		float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-		float cY = 1.0f - 2.0f * pY / windowHeight;
-		lineStrip.AddPoint(cX, cY);
+		cX = 2.0f * pX / windowWidth - 1;	// flip y axis
+		cY = 1.0f - 2.0f * pY / windowHeight;
+		//lineStrip.AddPoint(cX, cY);
+		lagrangeCurve.AddControlPoint(sec, cX, cY, lineStrip);
+		glutPostRedisplay();     // redraw
+	}
+
+	//bezier
+	if(button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
+		cX = 2.0f * pX / windowWidth - 1;	// flip y axis
+		cY = 1.0f - 2.0f * pY / windowHeight;
+		bezierCurve.AddControlPoint(sec, cX, cY, lineStripBezier);
 		glutPostRedisplay();     // redraw
 	}
 }
