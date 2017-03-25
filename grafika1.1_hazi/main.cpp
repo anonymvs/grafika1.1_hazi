@@ -690,8 +690,6 @@ public:
 			}
 		}
 		printf("Total distance: %f m \n", length * 50);
-
-		
 	}
 
 	vec3 r(float t) {
@@ -762,6 +760,7 @@ class Bicycle {
 	float iterator;
 	float preTime;
 	float dt;
+	float rad;			//turn of the element
 public:
 	Bicycle() {
 		state = false;
@@ -832,10 +831,19 @@ public:
 		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
 	}
 
+	vec3 calcDirectionVector(vec3 a, vec3 b) {
+		return vec3(b.x - a.x, b.y - a.y, b.z - a.z);
+	}
+	float getRadian(float deg) {
+		const double h = M_PI / 180;
+		return deg * h;
+	}
+
 	void Animate(float t, LagrangeCurve *l) {
 		if (state) {
 			sx = 1;
 			sy = 1;
+			vec3 directionVector;
 			std::vector<ControlPoint> cps = l->getCPs();
 			if (iterator < cps.size() - (dt + 1.0f)) {
 				if (cps.size() > 1) {
@@ -854,7 +862,11 @@ public:
 							vec3 rr = l->r(iterator);
 							wTx = rr.x;
 							wTy = rr.y;
-							//printf("dt: %f\n", dt);
+							
+							vec3 postrr = l->r(iterator + dt);
+							directionVector = calcDirectionVector(rr, postrr);
+							rad = atanf(directionVector.y * 1000 / directionVector.x * 1000);
+
 							iterator += dt;
 						}
 						preTime = glutGet(GLUT_ELAPSED_TIME);
@@ -866,7 +878,17 @@ public:
 							vec3 rr = l->r(iterator);
 							wTx = rr.x;
 							wTy = rr.y;
-							//printf("dt: %f\n", dx);
+							
+							vec3 prerr = l->r(iterator - dt);
+							directionVector = calcDirectionVector(prerr, rr);
+							if (directionVector.x < 0) {
+								rad = atanf(directionVector.y / directionVector.x) + M_PI / 2;
+							}
+							else {
+								rad = atanf(directionVector.y / directionVector.x) + M_PI + M_PI / 2;
+							}
+							printf("rad: %f | x: %f = %f - %f \t y: %f = %f - %f \n",rad, directionVector.x, rr.x, prerr.x, directionVector.y, rr.y, prerr.y);
+
 							iterator += dt;
 						}
 						preTime = glutGet(GLUT_ELAPSED_TIME);
@@ -878,25 +900,29 @@ public:
 	}
 
 		void Draw() {
-			mat4 Mscale(sx, 0, 0, 0,
-				0, sy, 0, 0,
-				0, 0, 0, 0,
-				0, 0, 0, 1); // model matrix
+			if (state) {
+				mat4 Mscale(
+					cosf(rad), sinf(rad), 0, 0,
+					-sinf(rad),cosf(rad), 0, 0,
+					0, 0, 0, 0,
+					0, 0, 0, 1); // model matrix
 
-			mat4 Mtranslate(1, 0, 0, 0,
-				0, 1, 0, 0,
-				0, 0, 0, 0,
-				wTx, wTy, 0, 1); // model matrix
+				mat4 Mtranslate(
+					1, 0, 0, 0,
+					0, 1, 0, 0,
+					0, 0, 0, 0,
+					wTx, wTy, 0, 1); // model matrix
 
-			mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
+				mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
 
-			// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-			int location = glGetUniformLocation(shaderProgram, "MVP");
-			if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-			else printf("uniform MVP cannot be set\n");
+				// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+				int location = glGetUniformLocation(shaderProgram, "MVP");
+				if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+				else printf("uniform MVP cannot be set\n");
 
-			glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-			glDrawArrays(GL_TRIANGLES, 0, 6);	// draw a single triangle with vertices defined in vao
+				glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+				glDrawArrays(GL_TRIANGLES, 0, 6);	// draw a single triangle with vertices defined in vao
+			}
 		}
 };
 
