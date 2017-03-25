@@ -438,111 +438,12 @@ public:
 	}
 };
 
-class LagrangeCurve {
-	std::vector<ControlPoint> cps;
-
-	float L(int i, float t) {
-		float Li = 1.0f;
-		for (int j = 0; j < cps.size(); j++) {
-			if (j != i)
-				Li *= (t - cps[j].getTimeValue()) / (cps[i].getTimeValue() - cps[j].getTimeValue());
-		}
-		return Li;
-	}
-
-public: 
-
-	LagrangeCurve() {}
-
-	void AddControlPoint(float time, float cx, float cy,  LineStrip& l) {
-		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
-		float x = wVertex.v[0];
-		float y = wVertex.v[1];
-		float t = 0;
-
-		ControlPoint cp = ControlPoint(cps.size(), x, y, 0, time);
-		cps.push_back(cp);
-
-		l.removeAll();
-		float dt = 0.1f;
-		if (cps.size() <= 2) {
-			for (int i = 0; i < cps.size(); i++) {
-				l.AddPoint(cps[i].getPos().x, cps[i].getPos().y);
-			}
-		}
-		else {
-			for (float i = 0; i <= cps.size() - 0.99f; i += dt) {
-				vec3 rr = r(i);
-				l.AddPoint(rr.x, rr.y);
-			}
-		}
-	}
-
-	vec3 r(float t) {
-		vec3 rr(0, 0, 0);
-		for (int i = 0; i < cps.size(); i++) {
-			rr = rr + (cps[i].getPos() * L(i, t));
-		}
-		return rr;
-	}
-
-	std::vector<ControlPoint> getCP() {
-		return cps;
-	}
-};
-
-class BezierCurve {
-	std::vector<ControlPoint> cps;
-
-	float B(int i, float t) {
-		int n = cps.size() - 1; // n deg polynomial = n + 1 pts!
-		float choose = 1;
-		for (int j = 1; j <= i; j++) {
-			choose *= (float) (n - j + 1) / j;
-		}
-		return choose * pow(t, i) * pow(1 - t, n - i);
-	}
-
-public:
-	void AddControlPoint(float time, float cx, float cy, LineStrip& l) {
-		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
-		float x = wVertex.v[0];
-		float y = wVertex.v[1];
-		ControlPoint cp = ControlPoint(time, x, y, 0, time);
-		cps.push_back(cp);
-
-		l.removeAll();			
-		if (cps.size() <= 2) {
-			for (int i = 0; i < cps.size(); i++) {
-				l.AddPoint(cps[i].getPos().x, cps[i].getPos().y);
-			}
-		}
-		else {
-
-			float dt = 0.01f;
-			for (float i = 0.0f; i <= 1.0f; i+= dt) {
-				vec3 rr = r(i);
-				l.AddPoint(rr.x, rr.y);
-			}
-		}
-	}
-
-	vec3 r(float t) {
-		vec3 rr(0, 0, 0);
-		for (int i = 0; i < cps.size(); i++) {
-			rr = rr + (cps[i].getPos() * B(i, t));
-			//printf("i2: %d\n", i);
-		}
-		return rr;
-	}
-};
-
 class BezierSurface {
 	std::vector<std::vector<vec3>> controlMesh;
 	unsigned int vao; // vertex array object id
 	float sx, sy;
 	float wTx, wTy;
-	
+
 	float B(int i, float t) {
 		int n = controlMesh[i].size() - 1; // n deg polynomial = n + 1 pts!
 		float choose = 1;
@@ -699,32 +600,32 @@ public:
 
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
 		glDrawArrays(GL_TRIANGLES, 0, 100000);	// draw a single triangle with vertices defined in vao
-		
+
 	}
 
 	void GenerateMesh() {
 		//height matrix from 0 to 5
 		float heightMatrix[6][6] = {
-			{0, 1, 2, 3, 4, 5},
-			{0, 2, 1, 1, 0, 4},
-			{2, 3, 5, 5, 0, 1},
-			{3, 4, 5, 5, 3, 2},
-			{4, 5, 4, 3, 2, 1},
-			{5, 4, 0, 2, 1, 5}
+			{ 0, 1, 2, 3, 4, 5 },
+			{ 0, 2, 1, 1, 0, 4 },
+			{ 2, 3, 5, 5, 0, 1 },
+			{ 3, 4, 5, 5, 3, 2 },
+			{ 4, 5, 4, 3, 2, 1 },
+			{ 5, 4, 0, 2, 1, 5 }
 		};
 		//filling up the mesh
 		int a = 0;
 		int b = 0;
-for (int i = -10; i <= 10; i += 4) {
-	std::vector<vec3> xArray;
-	for (int j = -10; j <= 10; j += 4) {
-		xArray.push_back(vec3(i, j, heightMatrix[a][b]));
-		b++;
-	}
-	controlMesh.push_back(xArray);
-	b = 0;
-	a++;
-}
+		for (int i = -10; i <= 10; i += 4) {
+			std::vector<vec3> xArray;
+			for (int j = -10; j <= 10; j += 4) {
+				xArray.push_back(vec3(i, j, heightMatrix[a][b]));
+				b++;
+			}
+			controlMesh.push_back(xArray);
+			b = 0;
+			a++;
+		}
 	}
 
 	vec3 r(float u, float v) {
@@ -739,11 +640,128 @@ for (int i = -10; i <= 10; i += 4) {
 
 };
 
+class LagrangeCurve {
+	std::vector<ControlPoint> cps;
+	float totalTime;
+	float length;
+
+	float L(int i, float t) {
+		float Li = 1.0f;
+		for (int j = 0; j < cps.size(); j++) {
+			if (j != i)
+				Li *= (t - cps[j].getTimeValue()) / (cps[i].getTimeValue() - cps[j].getTimeValue());
+		}
+		return Li;
+	}
+
+public: 
+
+	LagrangeCurve() { length = 0; }
+
+	void AddControlPoint(float time, float cx, float cy,  LineStrip& l, BezierSurface& b) {
+		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
+		float x = wVertex.v[0];
+		float y = wVertex.v[1];
+		float t = 0;
+
+		ControlPoint cp = ControlPoint(cps.size(), x, y, 0, time);
+		cps.push_back(cp);
+
+		totalTime = cps.back().getCPTime() - cps.front().getCPTime();
+
+		l.removeAll();
+		float dt = 0.1f;
+		if (cps.size() < 2) {
+			for (int i = 0; i < cps.size(); i++) {
+				l.AddPoint(cps[i].getPos().x, cps[i].getPos().y);
+			}
+		}
+		else {
+			for (float i = 0.0f; i <= cps.size() - 0.99f; i += dt) {
+				vec3 rr = r(i);
+				l.AddPoint(rr.x, rr.y);
+				if (i > 0.0f) {
+					vec3 prerr = r(i - dt);
+					vec3 br = b.r((rr.x + 10) / 20, (rr.y + 10) / 20);
+					vec3 prebr = b.r((prerr.x + 10) / 20, (prerr.y + 10) / 20);
+					float d = sqrtf(pow((br.x - prebr.x), 2) + pow((br.y - prebr.y), 2) + pow((br.z * 2 - prebr.z * 2), 2));
+					length += d;
+				}
+			}
+		}
+		printf("Total distance: %f m \n", length * 50);
+
+		
+	}
+
+	vec3 r(float t) {
+		vec3 rr(0, 0, 0);
+		for (int i = 0; i < cps.size(); i++) {
+			rr = rr + (cps[i].getPos() * L(i, t));
+		}
+		return rr;
+	}
+
+	std::vector<ControlPoint> getCPs() {
+		return cps;
+	}
+};
+
+class BezierCurve {
+	std::vector<ControlPoint> cps;
+
+	float B(int i, float t) {
+		int n = cps.size() - 1; // n deg polynomial = n + 1 pts!
+		float choose = 1;
+		for (int j = 1; j <= i; j++) {
+			choose *= (float) (n - j + 1) / j;
+		}
+		return choose * pow(t, i) * pow(1 - t, n - i);
+	}
+
+public:
+	void AddControlPoint(float time, float cx, float cy, LineStrip& l) {
+		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
+		float x = wVertex.v[0];
+		float y = wVertex.v[1];
+		ControlPoint cp = ControlPoint(time, x, y, 0, time);
+		cps.push_back(cp);
+
+		l.removeAll();			
+		if (cps.size() <= 2) {
+			for (int i = 0; i < cps.size(); i++) {
+				l.AddPoint(cps[i].getPos().x, cps[i].getPos().y);
+			}
+		}
+		else {
+
+			float dt = 0.01f;
+			for (float i = 0.0f; i <= 1.0f; i+= dt) {
+				vec3 rr = r(i);
+				l.AddPoint(rr.x, rr.y);
+			}
+		}
+	}
+
+	vec3 r(float t) {
+		vec3 rr(0, 0, 0);
+		for (int i = 0; i < cps.size(); i++) {
+			rr = rr + (cps[i].getPos() * B(i, t));
+			//printf("i2: %d\n", i);
+		}
+		return rr;
+	}
+};
+
 class Bicycle {
 	unsigned int vao;	// vertex array object id
 	float sx, sy;		// scaling
 	float wTx, wTy;		// translation
 	int state;
+	float time;
+	float iterator;
+	float preTime;
+	float dt;
 public:
 	Bicycle() {
 		state = false;
@@ -753,8 +771,11 @@ public:
 		return state;
 	}
 
-	void toggle(int arg) {
+	void toggle(int arg, float time) {
+		iterator = 0;
 		state = arg;
+		preTime = glutGet(GLUT_ELAPSED_TIME);
+		dt = 0;
 	}
 
 	void Create() {
@@ -813,15 +834,45 @@ public:
 
 	void Animate(float t, LagrangeCurve *l) {
 		if (state) {
-			std::vector<ControlPoint> cps = l->getCP();
-			float dt = 0.1f;
-			if (cps.size() > 2) {
-				for (float i = 0; i <= cps.size() - 0.99f; i += dt) {
-					vec3 rr = l->r(i);
-					wTx = rr.x;
-					wTy = rr.y;
-					printf("wTx: %f\t wTy: %f\n", wTx, wTy);
+			sx = 1;
+			sy = 1;
+			std::vector<ControlPoint> cps = l->getCPs();
+			if (iterator < cps.size() - (dt + 1.0f)) {
+				if (cps.size() > 1) {
+					/*if (glutGet(GLUT_ELAPSED_TIME) % 10 == 0) {
+						vec3 rr = l->r(iterator);
+						wTx = rr.x;
+						wTy = rr.y;
+						printf("wTx: %f\t wTy: %f\n", wTx, wTy);
+						if (iterator <= cps.size() - 0.99f)
+							iterator += dt;
+					}*/
+
+					if (dt <= 0.00001000) {
+						if (glutGet(GLUT_ELAPSED_TIME) != preTime) {
+							dt = 1 / ((cps[1].getCPTime() - cps[0].getCPTime()) * 1000);
+							vec3 rr = l->r(iterator);
+							wTx = rr.x;
+							wTy = rr.y;
+							//printf("dt: %f\n", dt);
+							iterator += dt;
+						}
+						preTime = glutGet(GLUT_ELAPSED_TIME);
+					}
+					else {
+						float dx = cps[ceil(iterator)].getCPTime() - cps[ceil(iterator) - 1].getCPTime();
+						dt = 1 / (dx * 1000);
+						if (glutGet(GLUT_ELAPSED_TIME) != preTime) {
+							vec3 rr = l->r(iterator);
+							wTx = rr.x;
+							wTy = rr.y;
+							//printf("dt: %f\n", dx);
+							iterator += dt;
+						}
+						preTime = glutGet(GLUT_ELAPSED_TIME);
+					}
 				}
+				else { this->toggle(false, 0); }
 			}
 		}
 	}
@@ -929,11 +980,13 @@ void onDisplay() {
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
+	long time = glutGet(GLUT_ELAPSED_TIME);
+	float sec = time / 1000.0f;
 	if (key == ' ') {
 		if (bicycle.getState())
-			bicycle.toggle(false);
+			bicycle.toggle(false, time);
 		else
-			bicycle.toggle(true);
+			bicycle.toggle(true, 0);
 	}
 		
 	glutPostRedisplay();         // if d, invalidate display, i.e. redraw
@@ -955,9 +1008,8 @@ void onMouse(int button, int state, int pX, int pY) {
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
 		cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 		cY = 1.0f - 2.0f * pY / windowHeight;
-		printf("windowCoords - cX: %f \t cY: %f\n", cX, cY);
 		//lineStrip.AddPoint(cX, cY);
-		lagrangeCurve.AddControlPoint(sec, cX, cY, lineStrip);
+		lagrangeCurve.AddControlPoint(sec, cX, cY, lineStrip, bezierSurface);
 		glutPostRedisplay();     // redraw
 	}
 
