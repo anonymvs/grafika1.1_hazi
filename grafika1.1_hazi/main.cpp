@@ -373,7 +373,7 @@ public:
 		vertexData[5 * nVertices + 1] = cY;
 		vertexData[5 * nVertices + 2] = 1; // red
 		vertexData[5 * nVertices + 3] = 1; // green
-		vertexData[5 * nVertices + 4] = 0; // blue
+		vertexData[5 * nVertices + 4] = 1; // blue
 		nVertices++;
 		// copy data to the GPU
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -401,12 +401,14 @@ public:
 class ControlPoint {
 	vec3 pos;
 	float t;
+	float time;
 public:
 	ControlPoint() {}
 
-	ControlPoint(float argt, float x, float y, float z) {
+	ControlPoint(float argt, float x, float y, float z, float time) {
 		pos = vec3(x, y, z);
 		t = argt;
+		this->time = time;
 	}
 
 	vec3 getPos() {
@@ -415,6 +417,10 @@ public:
 
 	float getTimeValue() {
 		return t;
+	}
+
+	float getCPTime() {
+		return time;
 	}
 
 	void setPos(vec3 argv) {
@@ -454,7 +460,7 @@ public:
 		float y = wVertex.v[1];
 		float t = 0;
 
-		ControlPoint cp = ControlPoint(cps.size(), x, y, 0);
+		ControlPoint cp = ControlPoint(cps.size(), x, y, 0, time);
 		cps.push_back(cp);
 
 		l.removeAll();
@@ -465,7 +471,7 @@ public:
 			}
 		}
 		else {
-			for (float i = 0; i <= cps.size()-0.99f; i += dt) {
+			for (float i = 0; i <= cps.size() - 0.99f; i += dt) {
 				vec3 rr = r(i);
 				l.AddPoint(rr.x, rr.y);
 			}
@@ -478,6 +484,10 @@ public:
 			rr = rr + (cps[i].getPos() * L(i, t));
 		}
 		return rr;
+	}
+
+	std::vector<ControlPoint> getCP() {
+		return cps;
 	}
 };
 
@@ -498,7 +508,7 @@ public:
 		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
 		float x = wVertex.v[0];
 		float y = wVertex.v[1];
-		ControlPoint cp = ControlPoint(time, x, y, 0);
+		ControlPoint cp = ControlPoint(time, x, y, 0, time);
 		cps.push_back(cp);
 
 		l.removeAll();			
@@ -510,7 +520,7 @@ public:
 		else {
 
 			float dt = 0.01f;
-			for (float i = 0.0f; i <= 1.01f; i+= dt) {
+			for (float i = 0.0f; i <= 1.0f; i+= dt) {
 				vec3 rr = r(i);
 				l.AddPoint(rr.x, rr.y);
 			}
@@ -521,29 +531,343 @@ public:
 		vec3 rr(0, 0, 0);
 		for (int i = 0; i < cps.size(); i++) {
 			rr = rr + (cps[i].getPos() * B(i, t));
-			printf("i2: %d\n", i);
+			//printf("i2: %d\n", i);
 		}
 		return rr;
 	}
 };
 
+class BezierSurface {
+	std::vector<std::vector<vec3>> controlMesh;
+	unsigned int vao; // vertex array object id
+	float sx, sy;
+	float wTx, wTy;
+	
+	float B(int i, float t) {
+		int n = controlMesh[i].size() - 1; // n deg polynomial = n + 1 pts!
+		float choose = 1;
+		for (int j = 1; j <= i; j++) {
+			choose *= (float)(n - j + 1) / j;
+		}
+		return choose * pow(t, i) * pow(1 - t, n - i);
+	}
+
+public:
+	BezierSurface() {
+
+	}
+
+	void Create() {
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo[2];		// vertex buffer objects
+		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
+
+									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
+											   //static float vertexCoords[6] = coordArray;	// vertex data on the CPU
+		static float vertexCoords[100000];
+		GenerateMesh();
+		int n = 0;
+		vec3 v;
+		vec3 downleft;
+		vec3 upperleft;
+		vec3 downright;
+		vec3 upperright;
+		float dt = 1.0f / 5.0f / 10.0f;
+		for (float i = 0.0f; i < 1.0f; i += dt) {
+			for (float j = 0.0f; j < 1.0f; j += dt) {
+				downleft = r(i, j);
+				upperleft = r(i, j + dt);
+				downright = r(i + dt, j);
+				upperright = r(i + dt, j + dt);
+
+				//first triangle
+				vertexCoords[n] = downleft.x;
+				vertexCoords[n + 1] = downleft.y;
+				vertexCoords[n + 2] = downleft.z;
+
+				vertexCoords[n + 3] = upperleft.x;
+				vertexCoords[n + 4] = upperleft.y;
+				vertexCoords[n + 5] = upperleft.z;
+
+				vertexCoords[n + 6] = downright.x;
+				vertexCoords[n + 7] = downright.y;
+				vertexCoords[n + 8] = downright.z;
+				//second
+				vertexCoords[n + 9] = upperright.x;
+				vertexCoords[n + 10] = upperright.y;
+				vertexCoords[n + 11] = upperright.z;
+
+				vertexCoords[n + 12] = downright.x;
+				vertexCoords[n + 13] = downright.y;
+				vertexCoords[n + 14] = downright.z;
+
+				vertexCoords[n + 15] = upperleft.x;
+				vertexCoords[n + 16] = upperleft.y;
+				vertexCoords[n + 17] = upperleft.z;
+
+				n += 18;
+			}
+		}
+
+		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
+			sizeof(vertexCoords),  // number of the vbo in bytes
+			vertexCoords,		   // address of the data array on the CPU
+			GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified
+								   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		// Data organization of Attribute Array 0
+		glVertexAttribPointer(0,			// Attribute Array 0
+			3, GL_FLOAT,  // components/attribute, component type
+			GL_FALSE,		// not in fixed point format, do not normalized
+			0, NULL);     // stride and offset: it is tightly packed
+
+						  // vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
+		static float vertexColors[100000];	// vertex data on the CPU
+		n = 0;
+		for (float i = 0.0f; i < 1.0f; i += dt) {
+			for (float j = 0.0f; j < 1.0f; j += dt) {
+				downleft = r(i, j);
+				upperleft = r(i, j + dt);
+				downright = r(i + dt, j);
+				upperright = r(i + dt, j + dt);
+
+				float red = 0.15f;
+				float green = 0.2f;
+				//first triangle
+				vertexColors[n] = downleft.z / 5;
+				vertexColors[n + 1] = (5 - downleft.z) / 5;
+				vertexColors[n + 2] = 0.0f;
+
+				vertexColors[n + 3] = upperleft.z / 5;
+				vertexColors[n + 4] = (5 - upperleft.z) / 5;
+				vertexColors[n + 5] = 0.0f;
+
+				vertexColors[n + 6] = downright.z / 5;
+				vertexColors[n + 7] = (5 - downright.z) / 5;
+				vertexColors[n + 8] = 0.0f;
+
+				//second triangle
+				vertexColors[n + 9] = upperright.z / 5;
+				vertexColors[n + 10] = (5 - upperright.z) / 5;
+				vertexColors[n + 11] = 0.0f;
+
+				vertexColors[n + 12] = downright.z / 5;
+				vertexColors[n + 13] = (5 - downright.z) / 5;
+				vertexColors[n + 14] = 0.0f;
+
+				vertexColors[n + 15] = upperleft.z / 5;
+				vertexColors[n + 16] = (5 - upperleft.z) / 5;
+				vertexColors[n + 17] = 0.0f;
+
+				n += 18;
+			}
+		}
+
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+
+																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
+		glEnableVertexAttribArray(1);  // Vertex position
+									   // Data organization of Attribute Array 1
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+	}
+
+	void Draw() {
+		wTx = 0;
+		wTy = 0;
+		sx = 1;
+		sy = 1;
+		mat4 Mscale(sx, 0, 0, 0,
+			0, sy, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 1); // model matrix
+
+		mat4 Mtranslate(1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 0, 0,
+			wTx, wTy, 0, 1); // model matrix
+
+		mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
+
+		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+		int location = glGetUniformLocation(shaderProgram, "MVP");
+		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+		else printf("uniform MVP cannot be set\n");
+
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		glDrawArrays(GL_TRIANGLES, 0, 100000);	// draw a single triangle with vertices defined in vao
+		
+	}
+
+	void GenerateMesh() {
+		//height matrix from 0 to 5
+		float heightMatrix[6][6] = {
+			{0, 1, 2, 3, 4, 5},
+			{0, 2, 1, 1, 0, 4},
+			{2, 3, 5, 5, 0, 1},
+			{3, 4, 5, 5, 3, 2},
+			{4, 5, 4, 3, 2, 1},
+			{5, 4, 0, 2, 1, 5}
+		};
+		//filling up the mesh
+		int a = 0;
+		int b = 0;
+for (int i = -10; i <= 10; i += 4) {
+	std::vector<vec3> xArray;
+	for (int j = -10; j <= 10; j += 4) {
+		xArray.push_back(vec3(i, j, heightMatrix[a][b]));
+		b++;
+	}
+	controlMesh.push_back(xArray);
+	b = 0;
+	a++;
+}
+	}
+
+	vec3 r(float u, float v) {
+		vec3 rr(0, 0, 0);
+		for (int i = 0; i < controlMesh.size(); i++) {
+			for (int j = 0; j < controlMesh[i].size(); j++) {
+				rr = rr + controlMesh[i][j] * B(i, u) * B(j, v);
+			}
+		}
+		return rr;
+	}
+
+};
+
+class Bicycle {
+	unsigned int vao;	// vertex array object id
+	float sx, sy;		// scaling
+	float wTx, wTy;		// translation
+	int state;
+public:
+	Bicycle() {
+		state = false;
+	}
+
+	int getState() {
+		return state;
+	}
+
+	void toggle(int arg) {
+		state = arg;
+	}
+
+	void Create() {
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo[2];		// vertex buffer objects
+		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
+
+									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
+		vec3 p1 = vec3(0.0f, 0.0f, 10.0f);
+		vec3 p2 = vec3(-0.4f, -0.4f, 10.0f);
+		vec3 p3 = vec3(0.4f, -0.4f, 10.0f);
+		vec3 p4 = vec3(0.0f, 0.5f, 10.0f);
+		static float vertexCoords[] = {
+			p1.x, p1.y, p1.z,
+			p2.x, p2.y, p2.z,
+			p4.x, p4.y, p4.z,
+
+			p1.x, p1.y, p1.z,
+			p3.x, p3.y, p3.z,
+			p4.x, p4.y, p4.z,
+		};
+		// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
+			sizeof(vertexCoords), // number of the vbo in bytes
+			vertexCoords,		   // address of the data array on the CPU
+			GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+								   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		// Data organization of Attribute Array 0 
+		glVertexAttribPointer(0,			// Attribute Array 0
+			3, GL_FLOAT,  // components/attribute, component type
+			GL_FALSE,		// not in fixed point format, do not normalized
+			0, NULL);     // stride and offset: it is tightly packed
+
+						  // vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
+		static float vertexColors[] = {
+			0, 0, 0,
+			0, 0, 0,
+			0, 0, 0,
+
+			0, 0, 0,
+			0, 0, 0,
+			0, 0, 0,
+		};	// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+
+																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
+		glEnableVertexAttribArray(1);  // Vertex position
+									   // Data organization of Attribute Array 1
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+	}
+
+	void Animate(float t, LagrangeCurve *l) {
+		if (state) {
+			std::vector<ControlPoint> cps = l->getCP();
+			float dt = 0.1f;
+			if (cps.size() > 2) {
+				for (float i = 0; i <= cps.size() - 0.99f; i += dt) {
+					vec3 rr = l->r(i);
+					wTx = rr.x;
+					wTy = rr.y;
+					printf("wTx: %f\t wTy: %f\n", wTx, wTy);
+				}
+			}
+		}
+	}
+
+		void Draw() {
+			mat4 Mscale(sx, 0, 0, 0,
+				0, sy, 0, 0,
+				0, 0, 0, 0,
+				0, 0, 0, 1); // model matrix
+
+			mat4 Mtranslate(1, 0, 0, 0,
+				0, 1, 0, 0,
+				0, 0, 0, 0,
+				wTx, wTy, 0, 1); // model matrix
+
+			mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
+
+			// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+			int location = glGetUniformLocation(shaderProgram, "MVP");
+			if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+			else printf("uniform MVP cannot be set\n");
+
+			glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+			glDrawArrays(GL_TRIANGLES, 0, 6);	// draw a single triangle with vertices defined in vao
+		}
+};
+
 // The virtual world: collection of two objects
 Triangle triangle;
-Triangle triangle2;
 LineStrip lineStrip;
 LagrangeCurve lagrangeCurve;
 BezierCurve bezierCurve;
 LineStrip lineStripBezier;
+BezierSurface bezierSurface;
+Bicycle bicycle;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
-	triangle.Create();
-	triangle2.Create();
+	//triangle.Create();
+	bezierSurface.Create();
 	lineStrip.Create();
 	lineStripBezier.Create();
+	bicycle.Create();
 
 
 	// Create vertex shader from string
@@ -595,16 +919,25 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
-	triangle.Draw();
-	triangle2.Draw();
+	//triangle.Draw();
+	bezierSurface.Draw();
 	lineStrip.Draw();
 	lineStripBezier.Draw();
+	bicycle.Draw();
 	glutSwapBuffers();									// exchange the two buffers
 }
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+	if (key == ' ') {
+		if (bicycle.getState())
+			bicycle.toggle(false);
+		else
+			bicycle.toggle(true);
+	}
+		
+	glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+	
 }
 
 // Key of ASCII code released
@@ -622,6 +955,7 @@ void onMouse(int button, int state, int pX, int pY) {
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
 		cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 		cY = 1.0f - 2.0f * pY / windowHeight;
+		printf("windowCoords - cX: %f \t cY: %f\n", cX, cY);
 		//lineStrip.AddPoint(cX, cY);
 		lagrangeCurve.AddControlPoint(sec, cX, cY, lineStrip);
 		glutPostRedisplay();     // redraw
@@ -645,7 +979,8 @@ void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float sec = time / 1000.0f;				// convert msec to sec
 	camera.Animate(sec);					// animate the camera
-	triangle.Animate(sec);					// animate the triangle object
+	//triangle.Animate(sec);					// animate the triangle object
+	bicycle.Animate(sec, &lagrangeCurve);
 	glutPostRedisplay();					// redraw the scene
 }
 
