@@ -18,8 +18,8 @@
 //
 // NYILATKOZAT
 // ---------------------------------------------------------------------------------------------
-// Nev    : 
-// Neptun : 
+// Nev    : Hegedüs Dániel
+// Neptun : YBY8BK
 // ---------------------------------------------------------------------------------------------
 // ezennel kijelentem, hogy a feladatot magam keszitettem, es ha barmilyen segitseget igenybe vettem vagy
 // mas szellemi termeket felhasznaltam, akkor a forrast es az atvett reszt kommentekben egyertelmuen jeloltem.
@@ -546,14 +546,14 @@ public:
 		int a = 0;
 		int b = 0;
 		for (int i = -10; i <= 10; i += 4) {
-			std::vector<vec3> xArray;
-			for (int j = -10; j <= 10; j += 4) {
-				xArray.push_back(vec3(i, j, heightMatrix[a][b]));
-				b++;
-			}
-			controlMesh.push_back(xArray);
-			b = 0;
-			a++;
+std::vector<vec3> xArray;
+for (int j = -10; j <= 10; j += 4) {
+	xArray.push_back(vec3(i, j, heightMatrix[a][b]));
+	b++;
+}
+controlMesh.push_back(xArray);
+b = 0;
+a++;
 		}
 	}
 
@@ -583,11 +583,22 @@ class LagrangeCurve {
 		return Li;
 	}
 
-public: 
+	float Ld(int i, float t) {
+		float Ldi = 0.0f;
+		for (int j = 0; j < cps.size(); j++) {
+			if (j != i) {
+				Ldi += 1 / (t - cps[j].getTimeValue());
+			}
+		}
+		Ldi = Ldi * L(i, t);
+		return Ldi;
+	}
+
+public:
 
 	LagrangeCurve() { length = 0; }
 
-	void AddControlPoint(float time, float cx, float cy,  LineStrip& l, BezierSurface& b) {
+	void AddControlPoint(float time, float cx, float cy, LineStrip& l, BezierSurface& b) {
 		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
 		float x = wVertex.v[0];
 		float y = wVertex.v[1];
@@ -632,49 +643,11 @@ public:
 	std::vector<ControlPoint> getCPs() {
 		return cps;
 	}
-};
 
-class BezierCurve {
-	std::vector<ControlPoint> cps;
-
-	float B(int i, float t) {
-		int n = cps.size() - 1; // n deg polynomial = n + 1 pts!
-		float choose = 1;
-		for (int j = 1; j <= i; j++) {
-			choose *= (float) (n - j + 1) / j;
-		}
-		return choose * pow(t, i) * pow(1 - t, n - i);
-	}
-
-public:
-	void AddControlPoint(float time, float cx, float cy, LineStrip& l) {
-		vec4 wVertex = vec4(cx, cy, 0, 1) * camera.Pinv() * camera.Vinv();
-		float x = wVertex.v[0];
-		float y = wVertex.v[1];
-		ControlPoint cp = ControlPoint(time, x, y, 0, time);
-		cps.push_back(cp);
-
-		l.removeAll();			
-		if (cps.size() <= 2) {
-			for (int i = 0; i < cps.size(); i++) {
-				l.AddPoint(cps[i].getPos().x, cps[i].getPos().y);
-			}
-		}
-		else {
-
-			float dt = 0.01f;
-			for (float i = 0.0f; i <= 1.0f; i+= dt) {
-				vec3 rr = r(i);
-				l.AddPoint(rr.x, rr.y);
-			}
-		}
-	}
-
-	vec3 r(float t) {
+	vec3 rd(float t) {
 		vec3 rr(0, 0, 0);
 		for (int i = 0; i < cps.size(); i++) {
-			rr = rr + (cps[i].getPos() * B(i, t));
-			//printf("i2: %d\n", i);
+			rr = rr + (cps[i].getPos() * Ld(i, t));
 		}
 		return rr;
 	}
@@ -790,50 +763,53 @@ public:
 		if (state) {
 			sx = 1;
 			sy = 1;
-			vec3 directionVector;
+			vec3 dir;
 			std::vector<ControlPoint> cps = l->getCPs();
 			if (iterator < cps.size() - (dt + 1.0f)) {
 				if (cps.size() > 1) {
-					if (dt <= 0.00001000) {
-						if (glutGet(GLUT_ELAPSED_TIME) != preTime) {
+					if (glutGet(GLUT_ELAPSED_TIME) != preTime) {
+						if (dt <= 0.00001000) {
 							dt = 1 / ((cps[1].getCPTime() - cps[0].getCPTime()) * 1000);
+							//position
 							vec3 rr = l->r(iterator);
 							wTx = rr.x;
 							wTy = rr.y;
-							
-							postrr = l->r(iterator + dt);
-							directionVector = calcDirectionVector(rr, postrr);
-							rad = atanf(directionVector.y * 1000 / directionVector.x * 1000);
-
-							iterator += dt;
-						}
-						preTime = glutGet(GLUT_ELAPSED_TIME);
-					}
-					else {
-						float dx = cps[ceil(iterator)].getCPTime() - cps[ceil(iterator) - 1].getCPTime();
-						dt = 1 / (dx * 1000);
-						if (glutGet(GLUT_ELAPSED_TIME) != preTime) {
-							vec3 rr = l->r(iterator);
-							wTx = rr.x;
-							wTy = rr.y;
-							
-							prerr = l->r(iterator - dt);
-							directionVector = calcDirectionVector(prerr, rr);
-							if (directionVector.x < 0) {
-								rad = atanf(directionVector.y / directionVector.x) + M_PI / 2;
+							//angle
+							vec3 dir = l->rd(iterator);
+							if (dir.x < 0) {
+								rad = atanf(dir.y / dir.x) + M_PI / 2;
 							}
 							else {
-								rad = atanf(directionVector.y / directionVector.x) + M_PI + M_PI / 2;
+								rad = atanf(dir.y / dir.x) + M_PI + M_PI / 2;
 							}
-
+							iterator += dt;
+						} else {
+							//time spent between points and calculated lenght of hops
+							float dx = cps[ceil(iterator)].getCPTime() - cps[ceil(iterator) - 1].getCPTime();
+							dt = 1 / (dx * 1000);
+							//position
+							vec3 rr = l->r(iterator);
+							wTx = rr.x;
+							wTy = rr.y;
+							//angle
+							vec3 dir = l->rd(iterator);
+							if (dir.x < 0) {
+								rad = atanf(dir.y / dir.x) + M_PI / 2;
+							}
+							else {
+								rad = atanf(dir.y / dir.x) + M_PI + M_PI / 2;
+							}
 							iterator += dt;
 						}
 						preTime = glutGet(GLUT_ELAPSED_TIME);
 					}
 				}
-				else { this->toggle(false, 0); }
+			}
+			else {
+				this->toggle(false, 0);
 			}
 		}
+
 	}
 
 	void Draw() {
@@ -926,7 +902,6 @@ public:
 				vec3 dir = vec3(postPos.x - pos.x, postPos.y - pos.y, postPos.z - pos.z);
 				float r = sqrtf(pow(dir.x, 2) + pow(dir.y, 2) + pow(dir.z, 2));
 				float teta = asinf(dir.z / r);
-				printf("teta: %f \n", teta);
 				sy = fabs(teta);
 				if (teta >= 0) {
 					if (sx < 0) {
@@ -945,7 +920,6 @@ public:
 				vec3 dir = vec3(pos.x - prePos.x, pos.y - prePos.y, pos.z - prePos.z);
 				float r = sqrtf(pow(dir.x, 2) + pow(dir.y, 2) + pow(dir.z, 2));
 				float teta = asinf(dir.z / r);
-				printf("teta: %f \n", teta);
 				sy = fabs(teta);
 				if (teta >= 0) {
 					if (sx < 0)
@@ -989,7 +963,6 @@ public:
 
 LineStrip lineStrip;
 LagrangeCurve lagrangeCurve;
-BezierCurve bezierCurve;
 LineStrip lineStripBezier;
 BezierSurface bezierSurface;
 Bicycle bicycle;
@@ -1006,7 +979,6 @@ void onInitialization() {
 
 	bezierSurface.Create();
 	lineStrip.Create();
-	lineStripBezier.Create();
 	bicycle.Create();
 
 
@@ -1105,14 +1077,6 @@ void onMouse(int button, int state, int pX, int pY) {
 		cY = 1.0f - 2.0f * pY / windowHeight;
 		//lineStrip.AddPoint(cX, cY);
 		lagrangeCurve.AddControlPoint(sec, cX, cY, lineStrip, bezierSurface);
-		glutPostRedisplay();     // redraw
-	}
-
-	//bezier
-	if(button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
-		cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-		cY = 1.0f - 2.0f * pY / windowHeight;
-		bezierCurve.AddControlPoint(sec, cX, cY, lineStripBezier);
 		glutPostRedisplay();     // redraw
 	}
 }
