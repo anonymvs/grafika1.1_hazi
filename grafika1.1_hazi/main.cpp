@@ -268,78 +268,6 @@ Camera camera;
 // handle of the shader program
 unsigned int shaderProgram;
 
-class Triangle {
-	unsigned int vao;	// vertex array object id
-	float sx, sy;		// scaling
-	float wTx, wTy;		// translation
-public:
-	Triangle() {
-		Animate(0);
-	}
-
-	void Create() {
-		glGenVertexArrays(1, &vao);	// create 1 vertex array object
-		glBindVertexArray(vao);		// make it active
-
-		unsigned int vbo[2];		// vertex buffer objects
-		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
-
-									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { -8, -8, -6, 10, 8, -2 };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
-			sizeof(vertexCoords), // number of the vbo in bytes
-			vertexCoords,		   // address of the data array on the CPU
-			GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
-								   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
-		glEnableVertexAttribArray(0);
-		// Data organization of Attribute Array 0 
-		glVertexAttribPointer(0,			// Attribute Array 0
-			2, GL_FLOAT,  // components/attribute, component type
-			GL_FALSE,		// not in fixed point format, do not normalized
-			0, NULL);     // stride and offset: it is tightly packed
-
-						  // vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = { 1, 0, 0,  0, 1, 0,  0, 0, 1 };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
-
-																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
-		glEnableVertexAttribArray(1);  // Vertex position
-									   // Data organization of Attribute Array 1
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
-	}
-
-	void Animate(float t) {
-		sx = 1; // sinf(t);
-		sy = 1; // cosf(t);
-		wTx = 0; // 4 * cosf(t / 2);
-		wTy = 0; // 4 * sinf(t / 2);
-	}
-
-	void Draw() {
-		mat4 Mscale(sx, 0, 0, 0,
-			0, sy, 0, 0,
-			0, 0, 0, 0,
-			0, 0, 0, 1); // model matrix
-
-		mat4 Mtranslate(1, 0, 0, 0,
-			0, 1, 0, 0,
-			0, 0, 0, 0,
-			wTx, wTy, 0, 1); // model matrix
-
-		mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
-
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
-
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, 3);	// draw a single triangle with vertices defined in vao
-	}
-};
-
 class LineStrip {
 	GLuint vao, vbo;        // vertex array object, vertex buffer object
 	float  vertexData[1000]; // interleaved data of coordinates and colors
@@ -613,6 +541,7 @@ public:
 			{ 4, 5, 4, 3, 2, 1 },
 			{ 5, 4, 0, 2, 1, 5 }
 		};
+
 		//filling up the mesh
 		int a = 0;
 		int b = 0;
@@ -761,6 +690,8 @@ class Bicycle {
 	float preTime;
 	float dt;
 	float rad;			//turn of the element
+	vec3 prerr;
+	vec3 postrr;
 public:
 	Bicycle() {
 		state = false;
@@ -768,6 +699,22 @@ public:
 
 	int getState() {
 		return state;
+	}
+
+	vec3 getPrerr() {
+		return prerr;
+	}
+
+	vec3 getPostrr() {
+		return postrr;
+	}
+
+	float getwTx() {
+		return wTx;
+	}
+
+	float getwTy() {
+		return wTy;
 	}
 
 	void toggle(int arg, float time) {
@@ -847,15 +794,6 @@ public:
 			std::vector<ControlPoint> cps = l->getCPs();
 			if (iterator < cps.size() - (dt + 1.0f)) {
 				if (cps.size() > 1) {
-					/*if (glutGet(GLUT_ELAPSED_TIME) % 10 == 0) {
-						vec3 rr = l->r(iterator);
-						wTx = rr.x;
-						wTy = rr.y;
-						printf("wTx: %f\t wTy: %f\n", wTx, wTy);
-						if (iterator <= cps.size() - 0.99f)
-							iterator += dt;
-					}*/
-
 					if (dt <= 0.00001000) {
 						if (glutGet(GLUT_ELAPSED_TIME) != preTime) {
 							dt = 1 / ((cps[1].getCPTime() - cps[0].getCPTime()) * 1000);
@@ -863,7 +801,7 @@ public:
 							wTx = rr.x;
 							wTy = rr.y;
 							
-							vec3 postrr = l->r(iterator + dt);
+							postrr = l->r(iterator + dt);
 							directionVector = calcDirectionVector(rr, postrr);
 							rad = atanf(directionVector.y * 1000 / directionVector.x * 1000);
 
@@ -879,7 +817,7 @@ public:
 							wTx = rr.x;
 							wTy = rr.y;
 							
-							vec3 prerr = l->r(iterator - dt);
+							prerr = l->r(iterator - dt);
 							directionVector = calcDirectionVector(prerr, rr);
 							if (directionVector.x < 0) {
 								rad = atanf(directionVector.y / directionVector.x) + M_PI / 2;
@@ -887,7 +825,6 @@ public:
 							else {
 								rad = atanf(directionVector.y / directionVector.x) + M_PI + M_PI / 2;
 							}
-							printf("rad: %f | x: %f = %f - %f \t y: %f = %f - %f \n",rad, directionVector.x, rr.x, prerr.x, directionVector.y, rr.y, prerr.y);
 
 							iterator += dt;
 						}
@@ -899,7 +836,7 @@ public:
 		}
 	}
 
-		void Draw() {
+	void Draw() {
 			if (state) {
 				mat4 Mscale(
 					cosf(rad), sinf(rad), 0, 0,
@@ -923,24 +860,150 @@ public:
 				glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
 				glDrawArrays(GL_TRIANGLES, 0, 6);	// draw a single triangle with vertices defined in vao
 			}
+	}
+};
+
+class Triangle {
+	unsigned int vao;	// vertex array object id
+	float sx, sy;		// scaling
+	float wTx, wTy;		// translation
+	int state; //true = increase | false = decrease
+	int draw;  //draw or not
+	
+public:
+	Triangle() {}
+
+	void toggle(int arg) {
+		draw = arg;
+	}
+
+	int getDraw() {
+		return draw;
+	}
+	void Create(vec3 pA, vec3 pB, vec3 pC) {
+		wTx = -8.8f;
+		wTy = 8.8f;
+		sx = 1;
+		sy = 1;
+		draw = false;
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo[2];		// vertex buffer objects
+		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
+
+									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
+		float vertexCoords[] = { pA.x, pA.y, pB.x, pB.y, pC.x, pC.y };	// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
+			sizeof(vertexCoords), // number of the vbo in bytes
+			vertexCoords,		   // address of the data array on the CPU
+			GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+								   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		// Data organization of Attribute Array 0 
+		glVertexAttribPointer(0,			// Attribute Array 0
+			2, GL_FLOAT,  // components/attribute, component type
+			GL_FALSE,		// not in fixed point format, do not normalized
+			0, NULL);     // stride and offset: it is tightly packed
+
+						  // vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
+		static float vertexColors[] = { 0, 0, 1,  0, 0, 1,  0, 0, 1 };	// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+
+																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
+		glEnableVertexAttribArray(1);  // Vertex position
+									   // Data organization of Attribute Array 1
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+	}
+
+	void Animate(float t, LagrangeCurve *l, BezierSurface *b, Bicycle *bike) {
+		if (draw) {
+			if (l->getCPs()[0].getPos().x == bike->getwTx() && l->getCPs()[0].getPos().y == bike->getwTy()) {
+				vec3 pos = b->r((bike->getwTx() + 10) / 20, (bike->getwTy() + 10) / 20);
+				vec3 postPos = b->r((bike->getPostrr().x + 10) / 20, (bike->getPostrr().y + 10) / 20);
+				vec3 dir = vec3(postPos.x - pos.x, postPos.y - pos.y, postPos.z - pos.z);
+				float r = sqrtf(pow(dir.x, 2) + pow(dir.y, 2) + pow(dir.z, 2));
+				float teta = asinf(dir.z / r);
+				printf("teta: %f \n", teta);
+				sy = fabs(teta);
+				if (teta >= 0) {
+					if (sx < 0) {
+						sx = -sx;
+					}
+				}
+				else {
+					if (sx > 0) {
+						sx = -sx;
+					}
+				}
+
+			} else {
+				vec3 prePos = b->r((bike->getPrerr().x + 10) / 20, (bike->getPrerr().y + 10) / 20);
+				vec3 pos = b->r((bike->getwTx() + 10) / 20, (bike->getwTy() + 10) / 20);
+				vec3 dir = vec3(pos.x - prePos.x, pos.y - prePos.y, pos.z - prePos.z);
+				float r = sqrtf(pow(dir.x, 2) + pow(dir.y, 2) + pow(dir.z, 2));
+				float teta = asinf(dir.z / r);
+				printf("teta: %f \n", teta);
+				sy = fabs(teta);
+				if (teta >= 0) {
+					if (sx < 0)
+						sx = -sx;
+				}
+				else {
+					if(sx > 0) 
+						sx = -sx;
+				}
+			}
 		}
+	}
+
+	void Draw() {
+		if (draw) {
+			mat4 Mscale(sx, 0, 0, 0,
+				0, sy, 0, 0,
+				0, 0, 0, 0,
+				0, 0, 0, 1); // model matrix
+
+			mat4 Mtranslate(1, 0, 0, 0,
+				0, 1, 0, 0,
+				0, 0, 0, 0,
+				wTx, wTy, 0, 1); // model matrix
+
+			mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
+
+			// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+			int location = glGetUniformLocation(shaderProgram, "MVP");
+			if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+			else printf("uniform MVP cannot be set\n");
+
+			glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+
+			glDrawArrays(GL_TRIANGLES, 0, 3);	// draw a single triangle with vertices defined in vao
+		}
+	}
 };
 
 // The virtual world: collection of two objects
-Triangle triangle;
+
 LineStrip lineStrip;
 LagrangeCurve lagrangeCurve;
 BezierCurve bezierCurve;
 LineStrip lineStripBezier;
 BezierSurface bezierSurface;
 Bicycle bicycle;
+Triangle triangleIncrease;
+//Triangle triangleDecrease;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
-	//triangle.Create();
+	triangleIncrease.Create(vec3(1.0f, 1.0f, 0.0f), vec3(-1.0f, 0.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f));
+	//triangleDecrease.Create(vec3(-1.0f, 1.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f), vec3(-1.0f, 0.0f, 0.0f), false);
+
 	bezierSurface.Create();
 	lineStrip.Create();
 	lineStripBezier.Create();
@@ -996,11 +1059,12 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
-	//triangle.Draw();
 	bezierSurface.Draw();
 	lineStrip.Draw();
 	lineStripBezier.Draw();
 	bicycle.Draw();
+	triangleIncrease.Draw();
+	//triangleDecrease.Draw();
 	glutSwapBuffers();									// exchange the two buffers
 }
 
@@ -1013,6 +1077,11 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 			bicycle.toggle(false, time);
 		else
 			bicycle.toggle(true, 0);
+		
+		if (triangleIncrease.getDraw())
+			triangleIncrease.toggle(false);
+		else
+			triangleIncrease.toggle(true);
 	}
 		
 	glutPostRedisplay();         // if d, invalidate display, i.e. redraw
@@ -1057,7 +1126,8 @@ void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float sec = time / 1000.0f;				// convert msec to sec
 	camera.Animate(sec);					// animate the camera
-	//triangle.Animate(sec);					// animate the triangle object
+	triangleIncrease.Animate(sec, &lagrangeCurve, &bezierSurface, &bicycle);
+	//triangleDecrease.Animate(sec, &lagrangeCurve, &bezierSurface, &bicycle);
 	bicycle.Animate(sec, &lagrangeCurve);
 	glutPostRedisplay();					// redraw the scene
 }
